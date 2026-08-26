@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Протокол-навигатор — тренажёр протоколов управления</title>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #FFFFFF; font-family: Arial, Helvetica, sans-serif; }
+  body { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; box-sizing: border-box; }
+  #root { width: 100%; }
+  @media (max-width: 600px) { body { padding: 0; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+const { useState, useMemo, useRef, useCallback } = React;
+
+/* =========================================================================
+   ПРОТОКОЛ-НАВИГАТОР
+   Интерактивный тренажёр для курса «Управление трековыми системами» (Эквио)
+   Палитра: чёрный / белый / серый rgb(120,120,120) / MT Bold Violet rgb(124,84,254)
+
+   ССЫЛКИ НА ТОВАРЫ: рендерятся только там, где ссылка подтверждена вручную
+   (см. поле url ниже). Для артикулов без подтверждённой ссылки — обычный
+   текст без гиперссылки, чтобы не публиковать непроверенные URL. Контент-
+   менеджер добавляет ссылки по мере проверки — см. PRD, раздел «Админ-панель
+   данных».
+   ========================================================================= */
+
+const C = {
+  black: "#000000",
+  white: "#FFFFFF",
+  gray: "#787878",
+  grayLight: "#F2F2F2",
+  grayLine: "#E4E4E4",
+  violet: "#7C54FE",
+};
+
+/* ---------------------------- Данные протоколов -------------------------- */
+
+const PROTOCOLS = {
+  onoff: {
+    label: "On/Off",
+    analogy: "Просто включить и выключить — как обычная лампочка.",
+    phrase:
+      "«Здесь свет просто включается и выключается. Никаких переплат за функции, которыми вы не будете пользоваться».",
+    limitation: "Нет диммирования и сценариев — предупредите клиента сразу.",
+  },
+  triac: {
+    label: "TRIAC",
+    analogy: "Классический диммер на стене — знакомая крутилка.",
+    phrase:
+      "«Это привычный диммер на стене — крутите ручку, свет тише или ярче. Приложение не нужно».",
+    limitation: "Управляет только яркостью, без цвета и сценариев.",
+  },
+  dali: {
+    label: "DALI / DALI 2",
+    analogy: "Дирижёр оркестра — у каждого светильника свой адрес.",
+    phrase:
+      "«Можно выстроить световые сценарии: утро, вечер, презентация — одним нажатием».",
+    limitation: "Настройка сложнее и дороже простых протоколов — это часть стоимости профессионального света.",
+  },
+  zigbee: {
+    label: "Zigbee",
+    analogy: "Ещё одно устройство в уже существующем умном доме.",
+    phrase:
+      "«Если у вас уже есть умная колонка или хаб — свет встроится в вашу систему. Сценарии и голосовые команды настраиваются прямо в приложении».",
+    limitation: "Без хаба протокол не заработает.",
+  },
+  ble: {
+    label: "Bluetooth Mesh",
+    analogy: "Пульт, который живёт у вас в кармане.",
+    phrase: "«Управляете прямо с телефона — отдельный хаб не обязателен».",
+    limitation: "Радиус действия ограничен помещением.",
+  },
+  wifi: {
+    label: "Wi-Fi",
+    analogy: "Как умная лампочка, которую многие уже пробовали.",
+    phrase:
+      "«Подключается к вашему Wi-Fi и управляется из приложения или голосом».",
+    limitation: "Стабильность зависит от домашней сети клиента.",
+  },
+  union: {
+    label: "UNION / RF",
+    analogy: "Радиосвязь напрямую — как пульт от телевизора.",
+    phrase:
+      "«Управление идёт по радиосигналу — обычным пультом или панелью, без Wi-Fi».",
+    limitation: "Не единая экосистема со сценариями — для этого нужны другие протоколы.",
+  },
+  wifiBulb: {
+    label: "Wi-Fi (умная лампа)",
+    analogy: "Меняете обычную лампу на умную Wi-Fi-лампу — без досветки контроллера.",
+    phrase:
+      "«Если светильник под лампу GU10 или GX53, можно вкрутить умную Wi-Fi-лампу — появится диммирование, изменение цветовой температуры (тёплый/холодный свет) и управление с телефона и голосом, без замены самого светильника».",
+    limitation: "Работает только для светильников с цоколем GU10 или GX53 — уточните модель перед предложением.",
+  },
+};
+
+/* Протоколы, которые имеет смысл предлагать как варианты «уже существующей»
+   умной экосистемы клиента (используются в уточняющем вопросе 1a) */
+const ECOSYSTEM_PROTOCOLS = ["zigbee", "ble", "wifi", "dali", "union"];
+
+/* ------------------------------ Данные систем ----------------------------- */
+/* devices[protocol] = { text, items?: [{label, url}], note? }
+   url подставлен только там, где ссылка подтверждена вручную.
+   caveat = общее ограничение системы, не привязанное к конкретному протоколу
+   (например, диммирование недоступно для отдельных серий светильников).
+
+   Источник: TrackSystem_Комплектация_17.08.2026.xlsx, лист «Описания Свод_»
+   (строки «Протоколы» и «Управление»), сверено 18.08.2026. */
+
+const SYSTEMS = [
+  {
+    id: "unity",
+    name: "Unity",
+    power: "AC 220V",
+    bulbSocket: true,
+    devices: {
+      triac: {
+        text: "Панели управления TRIAC — совместимы только с моделями светильников ниже, не со всей серией:",
+        items: [
+          { label: "731003 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/paneli-upravleniya-triac/731003/" },
+          { label: "731004 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/paneli-upravleniya-triac/731004/" },
+          { label: "731005 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/paneli-upravleniya-triac/731005/" },
+          { label: "Focus LED (TR021-1-12B3K-W-D-B)", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/odnofaznaya-trekovaya-sistema-unity/svetilnik-unity/tr021-1-12b3k-w-d-b/" },
+          { label: "Focus Zoom (TR021-1-12B4K-Z-D-W)", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/odnofaznaya-trekovaya-sistema-unity/svetilnik-unity/tr021-1-12b4k-z-d-w/" },
+          { label: "Yin (TR084-1-15W3K-D-W)", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/odnofaznaya-trekovaya-sistema-unity/svetilnik-unity/tr084-1-15w3k-d-w/" },
+        ],
+        note: "Для остальных моделей серии Unity TRIAC недоступен — предложите Wi-Fi выключатель MS007/MS008 (обычные LED-светильники, только вкл/выкл) или, если светильник под лампу GU10/GX53, смарт-лампу Wi-Fi (диммирование + цветовая температура).",
+      },
+      wifi: {
+        text: "Выбор конкретного устройства зависит от модели светильника:",
+        items: [
+          { label: "MD005 — Wi-Fi диммер (только Focus LED, Focus Zoom, Yin)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/dimmery-wi-fi/md005/" },
+          { label: "MD006 — Wi-Fi диммер (только Focus LED, Focus Zoom, Yin)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/dimmery-wi-fi/md006/" },
+          { label: "MS007 — Wi-Fi выключатель (остальные LED-светильники Unity)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/vyklyuchateli/ms007/" },
+          { label: "MS008 — Wi-Fi выключатель (остальные LED-светильники Unity)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/vyklyuchateli/ms008/" },
+        ],
+        note: "MD005/MD006 диммируют только ту же тройку моделей, что и TRIAC (Focus LED, Focus Zoom, Yin). Для остальных LED-светильников серии — выключатель MS007/MS008: голосом можно только включить/выключить всю трековую систему, диммирования нет. Для моделей под цоколь GU10/GX53 — смарт-лампа Wi-Fi (диммирование + цветовая температура, см. отдельный вариант).",
+      },
+    },
+  },
+  {
+    id: "trinity",
+    name: "Trinity",
+    power: "AC 220V",
+    bulbSocket: true,
+    devices: {
+      onoff: {
+        text: "Трёхклавишный выключатель — на треке можно организовать до 3 независимых групп освещения.",
+        note: "На каждом светильнике отдельным тумблером выставляется, к какой из трёх групп он относится. Это механическое зонирование — отдельный контроллер или пульт не нужен.",
+        maxGroups: 3,
+      },
+      /* DALI заявлен для предстоящих заказов — устройств управления пока нет */
+    },
+    caveat: "DALI для Trinity анонсирован для предстоящих поставок — уточните наличие перед предложением клиенту.",
+  },
+  {
+    id: "gravity",
+    name: "Gravity",
+    power: "DC 48V",
+    devices: {
+      onoff: {
+        text: "Двухклавишный выключатель — на треке можно организовать 2 независимые группы освещения.",
+        note: "Деление на группы делается перепайкой контактов на светильниках. Проще всего заказать это заранее, при оформлении заказа — тогда перепайку выполнит наша сервисная служба до отгрузки. Постфактум на объекте перепаять можно и силами заказчика по нашей инструкции, но в этом случае гарантия на светильник больше не действует.",
+        maxGroups: 2,
+      },
+    },
+  },
+  {
+    id: "radity",
+    name: "Radity",
+    power: "DC 48V",
+    devices: {
+      zigbee: {
+        text: "Панель DRC035-Z-8 (в нужном цвете) + хаб — обязателен, без него протокол не работает:",
+        items: [
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "exility",
+    name: "Exility",
+    power: "DC 48V",
+    addressableGroups: true, // Zigbee- и DALI-наборы светильников смарт и адресуются индивидуально — группы не ограничены жёстким числом
+    devices: {
+      onoff: {
+        text: "Двухклавишный выключатель — на несмарт-наборе светильников можно организовать 2 независимые группы освещения.",
+        note: "Деление на группы делается перепайкой контактов на светильниках — так же, как у Gravity. Проще всего заказать заранее, тогда перепайку выполнит сервисная служба до отгрузки. Постфактум на объекте можно перепаять и силами заказчика по нашей инструкции, но тогда гарантия на светильник больше не действует.",
+        maxGroups: 2,
+      },
+      ble: {
+        text: "Панель (в нужном цвете) и пульт:",
+        items: [
+          { label: "DRC034-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/paneli-upravleniya-bluetooth/drc034-8-w/" },
+          { label: "DRC034-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/paneli-upravleniya-bluetooth/drc034-8-b/" },
+          { label: "DRC034-B (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/pulty-blutooth/drc034-b/" },
+        ],
+        note: "Это несмарт-набор светильников — панель управляет им как одной зоной. Для нескольких групп на этом наборе — перепайка контактов (см. On/Off) или переход на смарт-набор по Zigbee/DALI.",
+      },
+      zigbee: {
+        text: "Панель DRC035-Z-8 (в нужном цвете) + хаб MD-TRA034-W(N):",
+        items: [
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      dali: {
+        text: "Совместимы все управляющие панели. Мастер-контроллер DALI для сценариев:",
+        items: [
+          { label: "721008", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "exilityx",
+    name: "Exility X",
+    power: "DC 48V",
+    addressableGroups: true, // Zigbee- и DALI-наборы светильников смарт и адресуются индивидуально — группы не ограничены жёстким числом
+    devices: {
+      onoff: {
+        text: "Двухклавишный выключатель — на треке можно организовать 2 независимые группы освещения для несмарт-набора светильников.",
+        note: "Переключатель групп находится прямо на адаптере светильника — переключается на месте, без смарт-протокола и без обращения в сервисную службу. Это только для несмарт-светильников: для смарт-наборов по Zigbee или DALI группы решаются адресацией, без ограничения в 2.",
+        maxGroups: 2,
+      },
+      zigbee: {
+        text: "Панель DRC035-Z-8 (в нужном цвете) + хаб MD-TRA034-W(N):",
+        items: [
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      dali: {
+        text: "Совместимы все управляющие панели. Мастер-контроллер DALI для сценариев:",
+        items: [
+          { label: "721008", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "basity",
+    name: "Basity",
+    power: "DC 48V",
+    devices: {
+      ble: {
+        text: "Контроллер, пульт, блок питания:",
+        items: [
+          { label: "780101 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/bluetooth-kontrollery/780101/" },
+          { label: "DRC034-B (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/pulty-blutooth/drc034-b/" },
+          { label: "TRA172DR-100W-DS-B (БП 100W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-100w-ds-b/" },
+          { label: "TRA172DR-200W-DS-B (БП 200W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-200w-ds-b/" },
+        ],
+      },
+      union: {
+        text: "Контроллер и пульт (RF 2.4):",
+        items: [
+          { label: "710101 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/710101/" },
+          { label: "710102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/710102/" },
+        ],
+      },
+      dali: {
+        text: "Блок питания и мастер-контроллер DALI для сценариев:",
+        items: [
+          { label: "TRA172DR-100W-DD-B (БП 100W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-100w-dd-b/" },
+          { label: "TRA172DR-200W-DD-B (БП 200W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-200w-dd-b/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "levity",
+    name: "Levity",
+    power: "DC 24V",
+    caveat: "Диммирование недоступно для серий Focus Led, Skim, Alfa S — уточните модель светильника перед предложением протокола.",
+    devices: {
+      triac: { text: "Источники напряжения серии TRIAC (по коллекции)" },
+      dali: {
+        text: "Источники DALI (по коллекции); диммеры и мастер-контроллер для сценариев:",
+        items: [
+          { label: "721001 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721001/" },
+          { label: "721002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721002/" },
+          { label: "721015 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721015/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+      zigbee: {
+        text: "Диммер, панель (в нужном цвете) и хаб:",
+        items: [
+          { label: "771002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/dimmery-zigbee/771002/" },
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      wifi: {
+        text: "Контроллер Wi-Fi:",
+        items: [
+          { label: "742001", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742001/" },
+          { label: "742002", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742002/" },
+        ],
+      },
+      union: {
+        text: "Контроллеры и пульты UNION:",
+        items: [
+          { label: "731013 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/731013/" },
+          { label: "01113 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01113/" },
+          { label: "01114 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01114/" },
+          { label: "01115 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01115/" },
+          { label: "711012 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711012/" },
+          { label: "711023 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711023/" },
+          { label: "711024 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711024/" },
+          { label: "711034 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711034/" },
+          { label: "711036 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711036/" },
+          { label: "711037 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711037/" },
+          { label: "711038 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711038/" },
+          { label: "01109 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01109/" },
+          { label: "01112 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01112/" },
+          { label: "01102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01102/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "axity",
+    name: "Axity",
+    power: "DC 48V",
+    devices: {
+      ble: {
+        text: "Контроллер, пульт, блок питания:",
+        items: [
+          { label: "780101 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/bluetooth-kontrollery/780101/" },
+          { label: "DRC034-B (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/bluetooth/pulty-blutooth/drc034-b/" },
+          { label: "TRA172DR-100W-DS-B (БП 100W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-100w-ds-b/" },
+          { label: "TRA172DR-200W-DS-B (БП 200W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-200w-ds-b/" },
+        ],
+      },
+      union: {
+        text: "Контроллер и пульт (RF 2.4):",
+        items: [
+          { label: "710101 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/710101/" },
+          { label: "710102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/710102/" },
+        ],
+      },
+      dali: {
+        text: "Блок питания и мастер-контроллер DALI для сценариев:",
+        items: [
+          { label: "TRA172DR-100W-DD-B (БП 100W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-100w-dd-b/" },
+          { label: "TRA172DR-200W-DD-B (БП 200W)", url: "https://maytoni.ru/catalog/functional/istochniki-pitaniya/bloki-pitaniya-48v/tra172dr-200w-dd-b/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "flarity",
+    name: "Flarity",
+    power: "DC 24V",
+    caveat: "Групповое диммирование недоступно для светильников мощностью 12W — уточните мощность перед предложением протокола.",
+    devices: {
+      triac: { text: "Источники напряжения серии TRIAC (по коллекции)" },
+      dali: {
+        text: "Источники DALI (по коллекции); диммеры и мастер-контроллер для сценариев:",
+        items: [
+          { label: "721001 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721001/" },
+          { label: "721002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721002/" },
+          { label: "721015 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721015/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+      zigbee: {
+        text: "Диммер, панель (в нужном цвете) и хаб:",
+        items: [
+          { label: "771002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/dimmery-zigbee/771002/" },
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      wifi: {
+        text: "Контроллер Wi-Fi:",
+        items: [
+          { label: "742001", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742001/" },
+          { label: "742002", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742002/" },
+        ],
+      },
+      union: {
+        text: "Контроллеры и пульты UNION:",
+        items: [
+          { label: "731013 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/731013/" },
+          { label: "01113 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01113/" },
+          { label: "01114 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01114/" },
+          { label: "01115 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01115/" },
+          { label: "711012 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711012/" },
+          { label: "711023 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711023/" },
+          { label: "711024 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711024/" },
+          { label: "711034 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711034/" },
+          { label: "711036 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711036/" },
+          { label: "711037 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711037/" },
+          { label: "711038 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711038/" },
+          { label: "01109 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01109/" },
+          { label: "01112 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01112/" },
+          { label: "01102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01102/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "arity",
+    name: "Arity",
+    power: "DC 24V",
+    devices: {
+      triac: { text: "Источники напряжения серии TRIAC (по коллекции)" },
+      dali: {
+        text: "Источники DALI (по коллекции); диммеры и мастер-контроллер для сценариев:",
+        items: [
+          { label: "721001 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721001/" },
+          { label: "721002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721002/" },
+          { label: "721015 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721015/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+      zigbee: {
+        text: "Диммер, панель (в нужном цвете) и хаб:",
+        items: [
+          { label: "771002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/dimmery-zigbee/771002/" },
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      wifi: {
+        text: "Контроллер Wi-Fi:",
+        items: [
+          { label: "742001", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742001/" },
+          { label: "742002", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742002/" },
+        ],
+      },
+      union: {
+        text: "Контроллеры и пульты UNION:",
+        items: [
+          { label: "731013 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/731013/" },
+          { label: "01113 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01113/" },
+          { label: "01114 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01114/" },
+          { label: "01115 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01115/" },
+          { label: "711012 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711012/" },
+          { label: "711023 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711023/" },
+          { label: "711024 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711024/" },
+          { label: "711034 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711034/" },
+          { label: "711036 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711036/" },
+          { label: "711037 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711037/" },
+          { label: "711038 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711038/" },
+          { label: "01109 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01109/" },
+          { label: "01112 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01112/" },
+          { label: "01102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01102/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "parity",
+    name: "Parity",
+    power: "DC 48V",
+    devices: {},
+  },
+  {
+    id: "flexity",
+    name: "Flexity",
+    power: "DC 48V",
+    devices: {},
+  },
+  {
+    id: "elasity",
+    name: "Elasity",
+    power: "DC 48V",
+    devices: {
+      zigbee: {
+        text: "Диммер, панель (в нужном цвете) и хаб — только управление лентой, не светильником:",
+        items: [
+          { label: "771002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/dimmery-zigbee/771002/" },
+          { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
+          { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      wifi: {
+        text: "Контроллер 742002 + все монохромные пульты и панели управления — только управление лентой:",
+        items: [
+          { label: "742002 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742002/" },
+        ],
+      },
+      dali: {
+        text: "Диммеры и мастер-контроллер DALI для сценариев — только управление лентой:",
+        items: [
+          { label: "721001 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721001/" },
+          { label: "721002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721002/" },
+          { label: "721015 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721015/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+    },
+  },
+  {
+    id: "shelf",
+    name: "Shelf",
+    power: "DC 24V",
+    devices: {
+      triac: {
+        text: "Контроллер и панели управления:",
+        items: [
+          { label: "731001 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/kontrollery-triac/731001/" },
+          { label: "731004 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/paneli-upravleniya-triac/731004/" },
+          { label: "731005 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/triac/paneli-upravleniya-triac/731005/" },
+        ],
+      },
+      dali: {
+        text: "Диммеры, панели управления и мастер-контроллер DALI для сценариев:",
+        items: [
+          { label: "721001 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721001/" },
+          { label: "721002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721002/" },
+          { label: "721015 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/dimmery/721015/" },
+          { label: "721033 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/paneli-upravleniya/721033/" },
+          { label: "721034 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/paneli-upravleniya/721034/" },
+          { label: "721008 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721008/" },
+          { label: "721010 (мастер-контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/dali/kontrollery-/721010/" },
+        ],
+      },
+      zigbee: {
+        text: "Диммер и хаб — голосовой ассистент или приложение Maytoni Smart / Яндекс:",
+        items: [
+          { label: "771002 (диммер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/dimmery-zigbee/771002/" },
+          { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
+        ],
+      },
+      wifi: {
+        text: "742001 + пульты 01111, 01112, 01110, 01109, 01124; либо 742002 + пульты 01109, 01112, 01102 (01103 снят с производства):",
+        items: [
+          { label: "742001 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742001/" },
+          { label: "742002 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/kontrollery-wifi/742002/" },
+          { label: "01111 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01111/" },
+          { label: "01112 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01112/" },
+          { label: "01110 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01110/" },
+          { label: "01109 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01109/" },
+          { label: "01124 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01124/" },
+          { label: "01102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01102/" },
+        ],
+      },
+      union: {
+        text: "Контроллеры и пульты UNION, готовый комплект CLM001:",
+        items: [
+          { label: "731013 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/731013/" },
+          { label: "01113 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01113/" },
+          { label: "01114 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01114/" },
+          { label: "01115 (контроллер)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/01115/" },
+          { label: "711012 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711012/" },
+          { label: "711023 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711023/" },
+          { label: "711024 (панель)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/paneli-upravleniya-union/711024/" },
+          { label: "711034 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711034/" },
+          { label: "711036 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711036/" },
+          { label: "711037 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711037/" },
+          { label: "711038 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/711038/" },
+          { label: "01109 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01109/" },
+          { label: "01112 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01112/" },
+          { label: "01102 (пульт)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/pulty-union/01102/" },
+          { label: "CLM001 (готовый комплект)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/union/kontrollery-union/clm001/" },
+        ],
+      },
+    },
+  },
+];
+
+const PRACTICE_TARGET = 3;
+
+/* ------------------------------- Логика подбора --------------------------- */
+
+function pickProtocol(system, existingProtocol, groupsCount, wantsDimming, wantsScenes) {
+  const d = system.devices;
+
+  // 1. Приоритет — протокол уже существующей у клиента экосистемы, если система его поддерживает
+  if (existingProtocol && d[existingProtocol]) return existingProtocol;
+  // 1b. Клиент на Wi-Fi-экосистеме, но у системы нет отдельного Wi-Fi устройства —
+  //     предлагаем смарт-лампу в цоколь, если она физически возможна для этой серии
+  if (existingProtocol === "wifi" && !d.wifi && system.bulbSocket) return "wifiBulb";
+
+  // 2. Нужно больше одной группы освещения. По-настоящему это умеют:
+  //    а) механическое зонирование (см. getMaxGroups) —
+  if (groupsCount > 1 && !wantsDimming && !wantsScenes && d.onoff && d.onoff.maxGroups && d.onoff.maxGroups >= groupsCount) {
+    return "onoff";
+  }
+  //    б) системы с адресными смарт-светильниками — группы решаются адресацией по DALI/Zigbee
+  if (groupsCount > 1 && system.addressableGroups) {
+    if (wantsScenes && d.dali) return "dali";
+    if (wantsScenes && d.zigbee) return "zigbee";
+    if (d.dali) return "dali";
+    if (d.zigbee) return "zigbee";
+  }
+  //    Для всех остальных систем DALI/Zigbee/UNION группу физически не делят —
+  //    решение принимается как для одной зоны, а несовпадение с запросом
+  //    отражается отдельным предупреждением (см. groupsExceeded).
+
+  // 3. Нужны световые сценарии (одна группа)
+  if (wantsScenes) {
+    if (d.dali) return "dali"; // профессиональные сценарии с адресацией
+    if (d.zigbee) return "zigbee"; // сценарии через приложение, если DALI нет
+  }
+
+  // 4. Нужно просто диммирование, без сценариев
+  if (wantsDimming) {
+    if (d.triac) return "triac"; // самый простой и привычный вариант
+    if (d.dali) return "dali";
+    if (d.zigbee) return "zigbee";
+    if (d.wifi) return "wifi";
+    if (d.ble) return "ble";
+    if (d.union) return "union";
+    if (system.bulbSocket) return "wifiBulb"; // смарт-лампа как последний вариант диммирования
+  }
+
+  // 5. Базовый сценарий — просто должно работать
+  if (d.triac) return "triac";
+  if (d.union) return "union";
+  if (d.ble) return "ble";
+  if (d.wifi) return "wifi";
+  return "onoff";
+}
+
+/* Максимум групп, который система физически может обеспечить.
+   По-настоящему независимые группы на одном треке умеют делать только системы
+   с механическим зонированием (Gravity, Trinity, Exility X — см. onoff.maxGroups)
+   либо системы с адресными смарт-светильниками (флаг addressableGroups) — там
+   деление на группы решается адресацией по Zigbee/DALI, а не количеством клавиш.
+   Наличие DALI/Zigbee само по себе (без этих условий) НЕ даёт нескольких
+   независимых групп — это управление отдельными светильниками внутри одной зоны. */
+function getMaxGroups(system) {
+  if (system.addressableGroups) return null;
+  const d = system.devices;
+  if (d.onoff && d.onoff.maxGroups) return d.onoff.maxGroups;
+  return 1;
+}
+
+function groupWord(n) {
+  return n === 1 ? "группа" : "группы";
+}
+
+/* Может ли система вообще диммировать — любым протоколом или смарт-лампой в цоколь. */
+function canDim(system) {
+  const d = system.devices;
+  if (d.triac || d.dali || d.zigbee || d.wifi || d.ble || d.union) return true;
+  if (system.bulbSocket) return true;
+  return false;
+}
+
+/* Может ли система строить световые сценарии — только DALI и Zigbee умеют. */
+function canScenes(system) {
+  const d = system.devices;
+  return !!(d.dali || d.zigbee);
+}
+
+/* Обозначение протокола для сообщений о несовпадении экосистемы клиента. */
+function ecosystemMismatch(system, existingProtocol) {
+  if (!existingProtocol || existingProtocol === "no") return null;
+  if (system.devices[existingProtocol]) return null;
+  if (existingProtocol === "wifi" && system.bulbSocket) return null; // есть валидный обходной путь
+  return PROTOCOLS[existingProtocol].label;
+}
+
+/* Мастер-контроллер DALI нужен в заказе только когда клиент только планирует умный дом
+   по DALI и ещё не купил управляющие устройства. Если DALI-экосистема у клиента уже есть —
+   контроллер не обязателен, это не нужно включать по умолчанию. */
+function daliControllerNote(clientAlreadyHasDali) {
+  return clientAlreadyHasDali
+    ? "Мастер-контроллер в заказ не обязателен: судя по ответу, DALI-экосистема и управляющие устройства у клиента уже есть — уточните перед добавлением в КП."
+    : "Мастер-контроллер нужен в заказе: клиент только планирует умный дом по DALI и ещё не купил управляющие устройства — без контроллера сценарии не настроить.";
+}
+
+/* «Каждый светильник — свой адрес» верно только там, где реально есть трековые
+   DALI-светильники с индивидуальной адресацией (Exility, Exility X). У остальных
+   систем DALI — это точка интеграции трека в уже существующую DALI-систему умного
+   дома клиента, а не адресация каждого светильника по отдельности. */
+function daliCopyFor(system) {
+  if (system.addressableGroups) {
+    return {
+      analogy: "Дирижёр оркестра — у каждого светильника свой адрес.",
+      phrase: "«Можно выстроить световые сценарии: утро, вечер, презентация — одним нажатием».",
+    };
+  }
+  return {
+    analogy: "Не адресация каждого светильника, а точка входа — трек подключается в общую DALI-систему умного дома клиента.",
+    phrase: "«Эта система интегрируется в вашу DALI-систему умного дома — сценариями и группами управляет общий контроллер здания, не мы».",
+  };
+}
+
+function getDeviceInfo(system, protoKey) {
+  if (protoKey === "wifiBulb") {
+    return { text: "Вкрутите умную Wi-Fi-лампу в цоколь GU10 или GX53 — диммирование и изменение цветовой температуры, отдельный контроллер не нужен." };
+  }
+  return system.devices[protoKey] || null;
+}
+
+/* --------------------------------- Квиз ----------------------------------- */
+
+const QUIZ = [
+  {
+    q: "У какой системы протокол DALI / DALI 2 и обязательно нужен мастер-контроллер для сценариев?",
+    options: ["Gravity", "Exility", "Unity"],
+    correct: 1,
+  },
+  {
+    q: "Клиент хочет управлять с телефона без отдельного хаба. Какой протокол предложить?",
+    options: ["Zigbee", "Bluetooth Mesh", "0–10V"],
+    correct: 1,
+  },
+  {
+    q: "Как можно настроить световые сценарии у системы Exility?",
+    options: [
+      "Только через DALI с мастер-контроллером",
+      "Через приложение по Zigbee или через DALI с мастер-контроллером",
+      "Сценарии в Exility недоступны",
+    ],
+    correct: 1,
+  },
+  {
+    q: "Сколько моделей светильников Unity поддерживают диммирование по TRIAC?",
+    options: ["Все модели серии", "Только 3 модели: Focus LED, Focus Zoom, Yin", "Ни одна — только On/Off"],
+    correct: 1,
+  },
+  {
+    q: "UNION / RF в матрице систем — это…",
+    options: [
+      "Отдельная умная экосистема со сценариями",
+      "Протокол только для DALI-систем",
+      "Категория радиоуправления: контроллеры, панели, пульты",
+    ],
+    correct: 2,
+  },
+];
+
+/* --------------------------------- Иконки --------------------------------- */
+
+const Icon = {
+  Signal: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M12 19v-2M8.5 16.5a5 5 0 0 1 7 0M5.5 13.5a9 9 0 0 1 13 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="19" r="1.1" fill="currentColor" />
+    </svg>
+  ),
+  Check: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M5 12.5 9.5 17 19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  Cross: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  ),
+  Copy: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M15.5 8.5V6.5A1.5 1.5 0 0 0 14 5H6a1.5 1.5 0 0 0-1.5 1.5V14A1.5 1.5 0 0 0 6 15.5h2" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  ),
+  Arrow: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  Link: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M9.5 14.5 14.5 9.5M11 7l1-1a3 3 0 0 1 4.24 4.24l-1 1M13 17l-1 1a3 3 0 0 1-4.24-4.24l1-1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+};
+
+/* -------------------------------- UI-компоненты --------------------------- */
+
+function ProgressBar({ fraction }) {
+  return (
+    <div className="pn-progress-track" aria-hidden="true">
+      <div className="pn-progress-fill" style={{ width: `${Math.round(fraction * 100)}%` }} />
+    </div>
+  );
+}
+
+function Pill({ active, onClick, children }) {
+  return (
+    <button type="button" className={`pn-pill${active ? " is-active" : ""}`} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+function DeviceBlock({ info }) {
+  if (!info) {
+    return (
+      <p className="pn-card-text pn-card-mono">
+        Для этой системы управление не предусмотрено — предложите клиенту простой вариант On/Off
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="pn-card-text pn-card-mono">{info.text}</p>
+      {info.items && info.items.length > 0 && (
+        <ul className="pn-device-list">
+          {info.items.map((it, i) =>
+            it.url ? (
+              <li key={i}>
+                <a className="pn-device-link" href={it.url} target="_blank" rel="noreferrer">
+                  <Icon.Link width="13" height="13" /> {it.label}
+                </a>
+              </li>
+            ) : (
+              <li key={i} className="pn-device-plain">{it.label}</li>
+            )
+          )}
+        </ul>
+      )}
+      {info.note && <p className="pn-device-note">{info.note}</p>}
+    </>
+  );
+}
+
+/* ----------------------------------- App ----------------------------------- */
+
+function ProtocolNavigator() {
+  const [screen, setScreen] = useState("intro"); // intro | form | result | quizIntro | quiz | done
+  const [systemId, setSystemId] = useState(SYSTEMS[0].id);
+  const [groupsCount, setGroupsCount] = useState(null); // 1 | 2 | 3
+  const [wantsDimming, setWantsDimming] = useState(null); // 'yes' | 'no'
+  const [wantsScenes, setWantsScenes] = useState(null); // 'yes' | 'no'
+  const [existingProtocol, setExistingProtocol] = useState(null); // protocol key | 'no'
+  const [result, setResult] = useState(null);
+  const [practiced, setPracticed] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [selectedOpt, setSelectedOpt] = useState(null);
+  const [answered, setAnswered] = useState(false);
+  const [score, setScore] = useState(0);
+  const copyTimer = useRef(null);
+
+  const system = useMemo(() => SYSTEMS.find((s) => s.id === systemId), [systemId]);
+  const practiceCount = practiced.length;
+  const quizUnlocked = practiceCount >= PRACTICE_TARGET;
+
+  const maxGroups = useMemo(() => getMaxGroups(system), [system]);
+  const groupsExceeded = groupsCount !== null && maxGroups !== null && groupsCount > maxGroups;
+  const dimmingImpossible = wantsDimming === "yes" && !canDim(system);
+  const scenesImpossible = wantsScenes === "yes" && !canScenes(system);
+  const ecosystemLabel = ecosystemMismatch(system, existingProtocol);
+
+  const canSubmit =
+    groupsCount !== null &&
+    wantsDimming !== null &&
+    wantsScenes !== null &&
+    existingProtocol !== null;
+
+  const overallFraction = useMemo(() => {
+    if (screen === "intro") return 0;
+    if (screen === "quiz" || screen === "quizIntro") return 0.6 + (quizIndex / QUIZ.length) * 0.35;
+    if (screen === "done") return 1;
+    return 0.1 + Math.min(practiceCount, PRACTICE_TARGET) * 0.15;
+  }, [screen, practiceCount, quizIndex]);
+
+  const resetForm = useCallback((nextId) => {
+    setSystemId(nextId || systemId);
+    setGroupsCount(null);
+    setWantsDimming(null);
+    setWantsScenes(null);
+    setExistingProtocol(null);
+    setResult(null);
+    setCopied(false);
+    setScreen("form");
+  }, [systemId]);
+
+  const handleSubmit = () => {
+    const realExisting = existingProtocol && existingProtocol !== "no" ? existingProtocol : null;
+    const protoKey = pickProtocol(system, realExisting, groupsCount, wantsDimming === "yes", wantsScenes === "yes");
+    let deviceInfo = getDeviceInfo(system, protoKey);
+    if (protoKey === "dali" && deviceInfo && deviceInfo.items && deviceInfo.items.length) {
+      deviceInfo = { ...deviceInfo, note: daliControllerNote(realExisting === "dali") };
+    }
+    const copyOverride = protoKey === "dali" ? daliCopyFor(system) : null;
+    const notes = [];
+    if (groupsExceeded) {
+      notes.push(`Запрошено ${groupsCount} ${groupWord(groupsCount)}, но ${system.name} поддерживает максимум ${maxGroups} ${groupWord(maxGroups)} освещения.`);
+    }
+    if (dimmingImpossible) {
+      notes.push(`${system.name} не поддерживает диммирование ни одним протоколом — только включение/выключение.`);
+    }
+    if (scenesImpossible) {
+      notes.push(`${system.name} не поддерживает световые сценарии — нет ни DALI, ни Zigbee.`);
+    }
+    if (ecosystemLabel) {
+      notes.push(`${system.name} не работает напрямую с протоколом клиента (${ecosystemLabel}) — показан ближайший доступный вариант.`);
+    }
+    setResult({ protoKey, deviceInfo, notes, copyOverride });
+    setPracticed((prev) => (prev.includes(system.id) ? prev : [...prev, system.id]));
+    setScreen("result");
+  };
+
+  const handleTryAnother = () => {
+    const remaining = SYSTEMS.filter((s) => !practiced.includes(s.id));
+    const next = remaining.length ? remaining[0] : SYSTEMS[(SYSTEMS.findIndex((s) => s.id === systemId) + 1) % SYSTEMS.length];
+    resetForm(next.id);
+  };
+
+  const handleCopy = async () => {
+    if (!result) return;
+    const proto = PROTOCOLS[result.protoKey];
+    const deviceLine = result.deviceInfo
+      ? [result.deviceInfo.text, ...(result.deviceInfo.items || []).map((it) => it.label)].join("; ")
+      : "не предусмотрено";
+    const caveatLine = system.caveat ? `\nВажно: ${system.caveat}` : "";
+    const text = `${system.name} — ${proto.label}\nУстройства: ${deviceLine}${caveatLine}`;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      /* clipboard недоступен — молча игнорируем в демо-режиме */
+    }
+    setCopied(true);
+    clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2200);
+  };
+
+  const startQuiz = () => {
+    setQuizIndex(0);
+    setSelectedOpt(null);
+    setAnswered(false);
+    setScore(0);
+    setScreen("quiz");
+  };
+
+  const handleAnswer = (idx) => {
+    if (answered) return;
+    setSelectedOpt(idx);
+    setAnswered(true);
+    if (idx === QUIZ[quizIndex].correct) setScore((s) => s + 1);
+  };
+
+  const nextQuestion = () => {
+    if (quizIndex + 1 < QUIZ.length) {
+      setQuizIndex((i) => i + 1);
+      setSelectedOpt(null);
+      setAnswered(false);
+    } else {
+      setScreen("done");
+    }
+  };
+
+  const restartAll = () => {
+    setPracticed([]);
+    setScore(0);
+    setQuizIndex(0);
+    resetForm(SYSTEMS[0].id);
+    setScreen("intro");
+  };
+
+  return (
+    <div className={`pn-root${screen === "intro" ? " pn-root--wide" : ""}`}>
+      <style>{`
+        .pn-root {
+          --black:${C.black}; --white:${C.white}; --gray:${C.gray};
+          --grayLight:${C.grayLight}; --grayLine:${C.grayLine}; --violet:${C.violet};
+          box-sizing: border-box;
+          font-family: Arial, Helvetica, sans-serif;
+          background: var(--white);
+          color: var(--black);
+          max-width: 560px;
+          margin: 0 auto;
+          border: 1px solid var(--grayLine);
+          min-height: 640px;
+          display: flex;
+          flex-direction: column;
+          transition: max-width 200ms ease;
+        }
+        /* Стартовая страница показывается на полный рост курса в LMS —
+           1366–1440px это самое частое разрешение ноутбуков, на котором
+           курс открывают. Остальные экраны (форма/результат/квиз) держат
+           узкую ширину — так удобнее читать текст построчно. */
+        .pn-root.pn-root--wide {
+          max-width: 1400px;
+        }
+        .pn-root *, .pn-root *::before, .pn-root *::after { box-sizing: border-box; }
+        .pn-root button { font-family: inherit; cursor: pointer; }
+        .pn-root button:focus-visible,
+        .pn-root [tabindex]:focus-visible,
+        .pn-root select:focus-visible,
+        .pn-root a:focus-visible {
+          outline: 2px solid var(--violet);
+          outline-offset: 2px;
+        }
+
+        .pn-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 18px 24px 14px;
+          border-bottom: 1px solid var(--grayLine);
+        }
+        .pn-brand {
+          font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+          color: var(--violet); text-transform: uppercase;
+        }
+        .pn-step-label {
+          font-size: 11px; color: var(--gray); letter-spacing: 0.04em;
+          font-family: "Courier New", monospace;
+        }
+        .pn-progress-track { height: 3px; background: var(--grayLine); width: 100%; }
+        .pn-progress-fill { height: 100%; background: var(--violet); transition: width 420ms cubic-bezier(.4,0,.2,1); }
+
+        .pn-body { flex: 1; padding: 32px 24px 28px; display: flex; flex-direction: column; }
+
+        .pn-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; color: var(--violet); text-transform: uppercase; margin: 0 0 10px; }
+        .pn-h1 { font-size: 26px; line-height: 1.18; font-weight: 900; letter-spacing: -0.01em; margin: 0 0 12px; color: var(--black); }
+        .pn-sub { font-size: 15px; line-height: 1.5; color: var(--gray); margin: 0 0 28px; }
+
+        .pn-cta {
+          appearance: none; border: none; border-radius: 3px;
+          background: var(--black); color: var(--white);
+          font-size: 15px; font-weight: 700; padding: 14px 22px;
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          transition: transform 120ms ease, background 150ms ease;
+        }
+        .pn-cta:hover { background: var(--violet); }
+        .pn-cta:active { transform: scale(0.97); }
+        .pn-cta[disabled] { background: var(--grayLine); color: var(--gray); cursor: not-allowed; }
+        .pn-cta[disabled]:active { transform: none; }
+
+        .pn-cta-ghost {
+          appearance: none; background: var(--white); color: var(--black);
+          border: 1.5px solid var(--black); border-radius: 3px;
+          font-size: 14px; font-weight: 700; padding: 12px 18px;
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          transition: transform 120ms ease, background 150ms ease, color 150ms ease;
+        }
+        .pn-cta-ghost:hover { background: var(--black); color: var(--white); }
+        .pn-cta-ghost:active { transform: scale(0.97); }
+
+        .pn-intro-mark {
+          width: 64px; height: 64px; border-radius: 50%;
+          background: var(--black); color: var(--violet);
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 22px;
+        }
+        .pn-intro-mark svg { width: 30px; height: 30px; }
+
+        .pn-hero-screen {
+          flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          text-align: center; padding: 28px 0 8px; container-type: inline-size;
+        }
+        .pn-hero { width: 100%; overflow: hidden; display: flex; justify-content: center; margin-bottom: 22px; }
+        .pn-hero-row {
+          display: inline-flex; align-items: center; white-space: nowrap;
+          font-family: Arial, Helvetica, sans-serif; font-weight: 900; color: var(--violet);
+          letter-spacing: -0.01em; text-transform: uppercase;
+          font-size: 56px;
+          font-size: clamp(28px, 6.8cqw, 128px);
+        }
+        .pn-hero-o {
+          width: 0.8em; height: 0.8em; border-radius: 50%; background: var(--black);
+          display: inline-flex; align-items: center; justify-content: center;
+          margin: 0 0.01em; flex-shrink: 0;
+        }
+        .pn-hero-o-icon { width: 0.44em; height: 0.44em; color: var(--violet); }
+        .pn-hero-caps {
+          font-size: 16px; font-weight: 800; letter-spacing: 0.01em; text-transform: uppercase;
+          color: var(--black); margin: 0 0 12px; padding: 0 12px;
+        }
+        .pn-hero-sub {
+          font-size: 14px; line-height: 1.5; color: var(--gray); margin: 0 0 28px;
+          max-width: 380px; padding: 0 12px;
+        }
+        .pn-hero-cta {
+          appearance: none; background: var(--violet); color: var(--white);
+          border: 3px solid var(--black); border-radius: 0;
+          font-size: 16px; font-weight: 800; padding: 15px 42px;
+          transition: transform 120ms ease, background 150ms ease, color 150ms ease, border-color 150ms ease;
+        }
+        .pn-hero-cta:hover { background: var(--black); border-color: var(--violet); }
+        .pn-hero-cta:active { transform: scale(0.96); }
+
+        /* Широкий режим стартовой страницы (1366–1440px) — увеличиваем
+           отступы и вторичные элементы пропорционально контейнеру,
+           сам вордмарк уже масштабируется через cqw выше. */
+        .pn-root--wide .pn-head,
+        .pn-root--wide .pn-body { padding-left: 64px; padding-right: 64px; }
+        .pn-root--wide .pn-hero-caps { font-size: clamp(16px, 1.6cqw, 26px); margin-bottom: 16px; }
+        .pn-root--wide .pn-hero-sub { font-size: clamp(14px, 1.1cqw, 17px); max-width: 480px; margin-bottom: 36px; }
+        .pn-root--wide .pn-hero-cta { font-size: clamp(16px, 1.2cqw, 19px); padding: 18px 52px; }
+
+        .pn-field { margin-bottom: 22px; animation: pnFieldIn 320ms ease both; }
+        @keyframes pnFieldIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .pn-label { display: block; font-size: 13px; font-weight: 700; color: var(--black); margin-bottom: 10px; }
+        .pn-select {
+          width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 700;
+          border: 1.5px solid var(--black); border-radius: 3px; background: var(--white);
+          color: var(--black); appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 12px center; background-size: 18px;
+        }
+        .pn-pillrow { display: flex; gap: 8px; flex-wrap: wrap; }
+        .pn-warn-inline {
+          margin: 10px 0 0; padding: 10px 12px; background: var(--grayLight); border-left: 3px solid var(--violet);
+          border-radius: 4px; font-size: 12.5px; color: var(--black); line-height: 1.4;
+        }
+        .pn-pill {
+          appearance: none; border: 1.5px solid var(--grayLine); background: var(--white);
+          border-radius: 3px; padding: 10px 16px; font-size: 14px; font-weight: 700; color: var(--black);
+          transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+        }
+        .pn-pill:hover { border-color: var(--black); }
+        .pn-pill.is-active { background: var(--black); border-color: var(--black); color: var(--white); }
+
+
+        .pn-result-head { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 24px; }
+        .pn-pulse-wrap { position: relative; width: 96px; height: 96px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; }
+        .pn-pulse-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--violet); animation: pnPulse 1.8s ease-out infinite; opacity: 0; }
+        .pn-pulse-ring.d2 { animation-delay: 0.5s; }
+        .pn-pulse-ring.d3 { animation-delay: 1s; }
+        @keyframes pnPulse { 0% { transform: scale(0.55); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
+        .pn-pulse-core { position: relative; width: 56px; height: 56px; border-radius: 50%; background: var(--violet); color: var(--white); display: flex; align-items: center; justify-content: center; }
+        .pn-pulse-core svg { width: 26px; height: 26px; }
+        .pn-result-system { font-size: 13px; color: var(--gray); font-family: "Courier New", monospace; margin-bottom: 4px; }
+        .pn-result-protocol { font-size: 24px; font-weight: 900; letter-spacing: -0.01em; }
+
+        .pn-card { border-radius: 4px; padding: 18px 20px; margin-bottom: 12px; }
+        .pn-card.light { background: var(--grayLight); }
+        .pn-card.dark { background: var(--black); color: var(--white); }
+        .pn-card-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 8px; color: var(--violet); }
+        .pn-card-text { font-size: 14px; line-height: 1.5; margin: 0; }
+        .pn-card.dark .pn-card-text { font-style: italic; }
+        .pn-card-mono { font-family: "Courier New", monospace; font-size: 13px; line-height: 1.6; }
+
+        .pn-device-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        .pn-device-link {
+          display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;
+          color: var(--violet); text-decoration: none; font-family: "Courier New", monospace;
+        }
+        .pn-device-link:hover { text-decoration: underline; }
+        .pn-device-plain { font-size: 13px; font-family: "Courier New", monospace; color: var(--black); }
+        .pn-device-note { font-size: 12.5px; color: var(--gray); margin: 10px 0 0; line-height: 1.5; }
+
+        .pn-copy-row { display: flex; align-items: center; gap: 12px; margin: 16px 0 22px; flex-wrap: wrap; }
+        .pn-copy-confirm { font-size: 12.5px; color: var(--violet); font-weight: 700; }
+
+        .pn-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
+        .pn-progress-note { font-size: 12.5px; color: var(--gray); margin-bottom: 14px; }
+
+        .pn-unlock {
+          border: 1.5px solid var(--violet); border-radius: 4px; padding: 16px 18px;
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          margin-bottom: 18px; flex-wrap: wrap;
+        }
+        .pn-unlock-text { font-size: 13.5px; font-weight: 700; }
+
+        .pn-quiz-progress { display: flex; gap: 6px; margin-bottom: 22px; }
+        .pn-quiz-dot { flex: 1; height: 4px; border-radius: 2px; background: var(--grayLine); }
+        .pn-quiz-dot.done { background: var(--violet); }
+        .pn-quiz-dot.current { background: var(--black); }
+
+        .pn-q { font-size: 18px; font-weight: 800; line-height: 1.35; margin: 0 0 20px; }
+        .pn-opt {
+          width: 100%; text-align: left; border: 1.5px solid var(--grayLine); background: var(--white);
+          border-radius: 4px; padding: 14px 16px; margin-bottom: 10px; font-size: 14.5px; font-weight: 600;
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          transition: border-color 120ms ease, background 120ms ease;
+        }
+        .pn-opt:hover:not([disabled]) { border-color: var(--black); }
+        .pn-opt.correct { border-color: var(--violet); background: var(--violet); color: var(--white); }
+        .pn-opt.incorrect { border-color: var(--black); background: var(--white); }
+        .pn-opt.dim { opacity: 0.45; }
+        .pn-opt-icon { width: 20px; height: 20px; flex-shrink: 0; }
+
+        .pn-done-score { font-size: 52px; font-weight: 900; letter-spacing: -0.02em; margin: 6px 0 2px; }
+        .pn-done-score span { font-size: 22px; color: var(--gray); font-weight: 700; }
+
+        @media (prefers-reduced-motion: reduce) {
+          .pn-pulse-ring { animation: none; opacity: 0.5; }
+          .pn-progress-fill, .pn-cta, .pn-opt, .pn-field { transition: none; animation: none; }
+        }
+      `}</style>
+
+      {/* Header / progress */}
+      <div className="pn-head">
+        <span className="pn-brand">Протокол-навигатор</span>
+        <span className="pn-step-label">
+          {screen === "intro" && "СТАРТ"}
+          {(screen === "form" || screen === "result") && `ПРАКТИКА ${Math.min(practiceCount + (screen === "form" ? 1 : 0), PRACTICE_TARGET)}/${PRACTICE_TARGET}`}
+          {(screen === "quizIntro" || screen === "quiz") && `КВИЗ ${Math.min(quizIndex + 1, QUIZ.length)}/${QUIZ.length}`}
+          {screen === "done" && "ГОТОВО"}
+        </span>
+      </div>
+      <ProgressBar fraction={overallFraction} />
+
+      <div className="pn-body">
+        {/* ---------------- INTRO ---------------- */}
+        {screen === "intro" && (
+          <div className="pn-hero-screen">
+            <div className="pn-hero">
+              <div className="pn-hero-row">
+                <span>TRACK NAVIGAT</span>
+                <span className="pn-hero-o"><Icon.Signal className="pn-hero-o-icon" /></span>
+                <span>R</span>
+              </div>
+            </div>
+            <p className="pn-hero-caps">Подберите решение за 30 секунд</p>
+            <p className="pn-hero-sub">
+              Ответьте на несколько вопросов о клиенте — получите протокол, точные устройства и готовую фразу для разговора.
+            </p>
+            <button className="pn-hero-cta" onClick={() => resetForm(SYSTEMS[0].id)}>
+              Поехали!
+            </button>
+          </div>
+        )}
+
+        {/* ---------------- FORM ---------------- */}
+        {screen === "form" && (
+          <>
+            <p className="pn-eyebrow">Подбор решения</p>
+            <h1 className="pn-h1" style={{ fontSize: 22 }}>Опишите ситуацию клиента</h1>
+
+            <div className="pn-field">
+              <label className="pn-label" htmlFor="pn-system">Какая система?</label>
+              <select
+                id="pn-system"
+                className="pn-select"
+                value={systemId}
+                onChange={(e) => setSystemId(e.target.value)}
+              >
+                {SYSTEMS.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} · {s.power}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="pn-field">
+              <span className="pn-label">Нужна одна группа освещения или больше?</span>
+              <div className="pn-pillrow">
+                <Pill active={groupsCount === 1} onClick={() => setGroupsCount(1)}>1 группа</Pill>
+                <Pill active={groupsCount === 2} onClick={() => setGroupsCount(2)}>2 группы</Pill>
+                <Pill active={groupsCount === 3} onClick={() => setGroupsCount(3)}>3 группы</Pill>
+              </div>
+              {groupsExceeded && (
+                <p className="pn-warn-inline">
+                  Для системы {system.name} возможна максимум {maxGroups} {groupWord(maxGroups)} освещения — {groupsCount} {groupWord(groupsCount)} здесь не получится.
+                </p>
+              )}
+            </div>
+
+            <div className="pn-field">
+              <span className="pn-label">Нужно диммирование?</span>
+              <div className="pn-pillrow">
+                <Pill active={wantsDimming === "yes"} onClick={() => setWantsDimming("yes")}>Да</Pill>
+                <Pill active={wantsDimming === "no"} onClick={() => setWantsDimming("no")}>Нет</Pill>
+              </div>
+              {dimmingImpossible && (
+                <p className="pn-warn-inline">
+                  Система {system.name} не поддерживает диммирование ни одним протоколом — только включение/выключение.
+                </p>
+              )}
+            </div>
+
+            <div className="pn-field">
+              <span className="pn-label">Нужны сценарии (утро, день, вечер, праздник)?</span>
+              <div className="pn-pillrow">
+                <Pill active={wantsScenes === "yes"} onClick={() => setWantsScenes("yes")}>Да</Pill>
+                <Pill active={wantsScenes === "no"} onClick={() => setWantsScenes("no")}>Нет</Pill>
+              </div>
+              {scenesImpossible && (
+                <p className="pn-warn-inline">
+                  Система {system.name} не поддерживает световые сценарии — нет ни DALI, ни Zigbee.
+                </p>
+              )}
+            </div>
+
+            <div className="pn-field">
+              <span className="pn-label">У клиента уже есть умный дом с протоколом?</span>
+              <div className="pn-pillrow">
+                {ECOSYSTEM_PROTOCOLS.map((key) => (
+                  <Pill key={key} active={existingProtocol === key} onClick={() => setExistingProtocol(key)}>
+                    {PROTOCOLS[key].label}
+                  </Pill>
+                ))}
+                <Pill active={existingProtocol === "no"} onClick={() => setExistingProtocol("no")}>Нет</Pill>
+              </div>
+              {ecosystemLabel && (
+                <p className="pn-warn-inline">
+                  Система {system.name} не работает напрямую с протоколом клиента ({ecosystemLabel}) — предложим ближайшую альтернативу.
+                </p>
+              )}
+            </div>
+
+            <div className="pn-actions">
+              <button className="pn-cta" disabled={!canSubmit} onClick={handleSubmit}>
+                Подобрать решение
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ---------------- RESULT ---------------- */}
+        {screen === "result" && result && (
+          <>
+            <div className="pn-result-head">
+              <div className="pn-pulse-wrap">
+                <span className="pn-pulse-ring" /><span className="pn-pulse-ring d2" /><span className="pn-pulse-ring d3" />
+                <span className="pn-pulse-core"><Icon.Signal /></span>
+              </div>
+              <span className="pn-result-system">{system.name} · {system.power}</span>
+              <span className="pn-result-protocol">{PROTOCOLS[result.protoKey].label}</span>
+            </div>
+
+            <div className="pn-card light">
+              <p className="pn-card-label">Протокол</p>
+              <p className="pn-card-text">{result.copyOverride ? result.copyOverride.analogy : PROTOCOLS[result.protoKey].analogy}</p>
+            </div>
+
+            <div className="pn-card dark">
+              <p className="pn-card-label">Скажите клиенту</p>
+              <p className="pn-card-text">{result.copyOverride ? result.copyOverride.phrase : PROTOCOLS[result.protoKey].phrase}</p>
+            </div>
+
+            <div className="pn-card light">
+              <p className="pn-card-label">Устройства управления</p>
+              <DeviceBlock info={result.deviceInfo} />
+            </div>
+
+            <div className="pn-card light">
+              <p className="pn-card-label">Что учесть</p>
+              <p className="pn-card-text">{PROTOCOLS[result.protoKey].limitation}</p>
+              {result.notes.map((n, i) => <p key={i} className="pn-device-note">{n}</p>)}
+              {system.caveat && <p className="pn-device-note">{system.caveat}</p>}
+            </div>
+
+            <div className="pn-copy-row">
+              <button className="pn-cta-ghost" onClick={handleCopy}>
+                <Icon.Copy width="16" height="16" /> Скопировать для КП
+              </button>
+              {copied && <span className="pn-copy-confirm">Скопировано — вставьте в КП или CRM</span>}
+            </div>
+
+            {quizUnlocked ? (
+              <div className="pn-unlock">
+                <span className="pn-unlock-text">Квиз открыт — проверьте себя</span>
+                <button className="pn-cta" onClick={() => setScreen("quizIntro")}>
+                  Пройти квиз <Icon.Arrow width="16" height="16" />
+                </button>
+              </div>
+            ) : (
+              <p className="pn-progress-note">
+                Пройдено систем: {practiceCount} из {PRACTICE_TARGET} — продолжайте, чтобы открыть проверочный квиз
+              </p>
+            )}
+
+            <div className="pn-actions">
+              <button className="pn-cta-ghost" onClick={handleTryAnother}>Попробовать другую систему</button>
+            </div>
+          </>
+        )}
+
+        {/* ---------------- QUIZ INTRO ---------------- */}
+        {screen === "quizIntro" && (
+          <>
+            <div className="pn-intro-mark"><Icon.Signal /></div>
+            <p className="pn-eyebrow">Проверочный квиз</p>
+            <h1 className="pn-h1">Проверьте себя: 5 вопросов, около 3 минут</h1>
+            <p className="pn-sub">Результат сохранится в вашем прогрессе по курсу.</p>
+            <button className="pn-cta" style={{ width: "fit-content" }} onClick={startQuiz}>
+              Начать квиз <Icon.Arrow width="16" height="16" />
+            </button>
+          </>
+        )}
+
+        {/* ---------------- QUIZ ---------------- */}
+        {screen === "quiz" && (
+          <>
+            <div className="pn-quiz-progress" aria-hidden="true">
+              {QUIZ.map((_, i) => (
+                <span key={i} className={`pn-quiz-dot ${i < quizIndex ? "done" : ""} ${i === quizIndex ? "current" : ""}`} />
+              ))}
+            </div>
+            <p className="pn-q">{QUIZ[quizIndex].q}</p>
+            {QUIZ[quizIndex].options.map((opt, idx) => {
+              const isCorrect = idx === QUIZ[quizIndex].correct;
+              const isSelected = idx === selectedOpt;
+              let cls = "pn-opt";
+              if (answered && isCorrect) cls += " correct";
+              else if (answered && isSelected && !isCorrect) cls += " incorrect";
+              else if (answered) cls += " dim";
+              return (
+                <button key={idx} className={cls} disabled={answered} onClick={() => handleAnswer(idx)}>
+                  <span>{opt}</span>
+                  {answered && isCorrect && <Icon.Check className="pn-opt-icon" />}
+                  {answered && isSelected && !isCorrect && <Icon.Cross className="pn-opt-icon" />}
+                </button>
+              );
+            })}
+
+            {answered && (
+              <div className="pn-actions">
+                <button className="pn-cta" onClick={nextQuestion}>
+                  {quizIndex + 1 < QUIZ.length ? "Далее" : "Завершить"} <Icon.Arrow width="16" height="16" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ---------------- DONE ---------------- */}
+        {screen === "done" && (
+          <>
+            <p className="pn-eyebrow">Блок завершён</p>
+            <h1 className="pn-h1">Готово! Результат сохранён в вашем прогрессе по курсу</h1>
+            <p className="pn-done-score">{score}<span> / {QUIZ.length} верно</span></p>
+            <p className="pn-sub" style={{ marginTop: 4 }}>Практика: {practiceCount} из {PRACTICE_TARGET} систем пройдено.</p>
+            <div className="pn-actions">
+              <button className="pn-cta" onClick={restartAll}>Пройти ещё раз</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<ProtocolNavigator />);
+</script>
+</body>
+</html>
