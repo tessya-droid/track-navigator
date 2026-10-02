@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Протокол-навигатор — тренажёр протоколов управления</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@800;900&display=swap" rel="stylesheet" />
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -178,12 +181,23 @@ const SYSTEMS = [
     power: "DC 48V",
     devices: {
       zigbee: {
-        text: "Панель DRC035-Z-8 (в нужном цвете) + хаб — обязателен, без него протокол не работает:",
+        text: "Смарт-светильники Zigbee + смарт-блок питания + панель DRC035-Z-8 (в нужном цвете) + хаб (обязателен, без него протокол не работает):",
         items: [
+          { label: "TR080-4-10WTW-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr080-4-10wtw-b/" },
+          { label: "TR080-4-20WTW-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr080-4-20wtw-b/" },
+          { label: "TR257-4-7WTW-M-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr257-4-7wtw-m-b/" },
+          { label: "TR103-4-12WTW-M-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr103-4-12wtw-m-b/" },
+          { label: "TR103-4-7WTW-M-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr103-4-7wtw-m-b/" },
+          { label: "TR082-4-12WTW-M-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr082-4-12wtw-m-b/" },
+          { label: "TR082-4-18WTW-M-B", url: "https://maytoni.ru/catalog/functional/trekovye-sistemy/magnitnaya-trekovaya-sistema-radity/svetilnik-radity/tr082-4-18wtw-m-b/" },
+          /* Ссылки на смарт-БП пока не подтверждены — добавить url, когда появятся карточки на сайте */
+          { label: "TRA086DR-100W-DSZ-B" },
+          { label: "TRA086DR-200W-DSZ-B" },
           { label: "DRC035-Z-8-B (панель, чёрная)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-b/" },
           { label: "DRC035-Z-8-W (панель, белая)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/zigbee/paneli-upravleniya-zigbee/drc035-z-8-w/" },
           { label: "MD-TRA034-W(N) (хаб)", url: "https://maytoni.ru/catalog/upravlenie-osveshcheniem/wi-fi/konvertery/md-tra034-w-n/" },
         ],
+        note: "Управлять по Zigbee можно только смарт-светильниками из списка выше. Чтобы управлять смарт-светильниками в одной группе, в заказ обязательно нужен смарт-блок питания TRA086DR-100W-DSZ-B или TRA086DR-200W-DSZ-B — подберите мощность по суммарной нагрузке светильников. Обычный блок питания для этого не подходит.",
       },
     },
   },
@@ -1067,36 +1081,61 @@ function ProtocolNavigator() {
           flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
           text-align: center; padding: 28px 0 8px; container-type: inline-size;
         }
-        .pn-hero { width: 100%; overflow: hidden; display: flex; justify-content: center; margin-bottom: 22px; }
-        .pn-hero-row {
-          display: inline-flex; align-items: center; white-space: nowrap;
-          font-family: Arial, Helvetica, sans-serif; font-weight: 900; color: var(--violet);
-          letter-spacing: -0.01em; text-transform: uppercase;
-          font-size: 56px;
-          font-size: clamp(28px, 6.8cqw, 128px);
+        .pn-hero { width: 100%; display: flex; justify-content: center; margin-bottom: 26px; padding: 0 0.04em; }
+        /* Вордмарк в стиле референса: широкий гротеск Unbounded 900,
+           градиент слева направо белый → сиреневый → фиолетовый → синий → бирюзовый. */
+        .pn-hero-title {
+          margin: 0; white-space: nowrap;
+          font-family: "Unbounded", "Arial Black", Arial, Helvetica, sans-serif;
+          font-weight: 900; letter-spacing: -0.025em; line-height: 1.1;
+          font-size: 40px;
+          font-size: clamp(20px, 8.6cqw, 120px);
+          color: #C77DFF;
+          background: linear-gradient(90deg, #FFFFFF 0%, #F1E6FF 14%, #C68BFF 30%, #A64BF4 45%, #6E5BF0 60%, #4A8DF0 74%, #22C9EC 87%, #00F5FF 100%);
+          -webkit-background-clip: text; background-clip: text;
+          -webkit-text-fill-color: transparent;
+          padding-bottom: 0.06em;
         }
-        .pn-hero-o {
-          width: 0.8em; height: 0.8em; border-radius: 50%; background: var(--black);
-          display: inline-flex; align-items: center; justify-content: center;
-          margin: 0 0.01em; flex-shrink: 0;
-        }
-        .pn-hero-o-icon { width: 0.44em; height: 0.44em; color: var(--violet); }
         .pn-hero-caps {
           font-size: 16px; font-weight: 800; letter-spacing: 0.01em; text-transform: uppercase;
-          color: var(--black); margin: 0 0 12px; padding: 0 12px;
+          color: #FFFFFF; margin: 0 0 12px; padding: 0 12px;
         }
         .pn-hero-sub {
-          font-size: 14px; line-height: 1.5; color: var(--gray); margin: 0 0 28px;
+          font-size: 14px; line-height: 1.6; color: #A9A6B8; margin: 0 0 32px;
           max-width: 380px; padding: 0 12px;
         }
+        /* Кнопка-«таблетка» с мягким фиолетовым свечением, как на референсе */
         .pn-hero-cta {
-          appearance: none; background: var(--violet); color: var(--white);
-          border: 3px solid var(--black); border-radius: 0;
-          font-size: 16px; font-weight: 800; padding: 15px 42px;
-          transition: transform 120ms ease, background 150ms ease, color 150ms ease, border-color 150ms ease;
+          appearance: none; border: none; border-radius: 999px;
+          background: #B13AF0; color: #FFFFFF;
+          font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
+          padding: 17px 46px;
+          display: inline-flex; align-items: center; gap: 10px;
+          box-shadow: 0 0 0 1px rgba(214,140,255,0.35) inset, 0 8px 32px rgba(177,58,240,0.45), 0 0 60px rgba(177,58,240,0.25);
+          transition: transform 140ms ease, background 160ms ease, box-shadow 200ms ease;
         }
-        .pn-hero-cta:hover { background: var(--black); border-color: var(--violet); }
+        .pn-hero-cta-arrow { display: inline-block; transition: transform 200ms ease; }
+        .pn-hero-cta:hover { background: #BF52F7; box-shadow: 0 0 0 1px rgba(230,170,255,0.5) inset, 0 10px 40px rgba(177,58,240,0.6), 0 0 80px rgba(177,58,240,0.35); }
+        .pn-hero-cta:hover .pn-hero-cta-arrow { transform: translateX(4px); }
         .pn-hero-cta:active { transform: scale(0.96); }
+        .pn-root .pn-hero-cta:focus-visible { outline: 2px solid #00F5FF; outline-offset: 3px; }
+
+        /* Стартовая страница — тёмный фон с цветными пятнами свечения
+           (без тёмного фона белое начало градиента не видно). */
+        .pn-root.pn-root--wide {
+          background:
+            radial-gradient(ellipse 45% 60% at 0% 0%, rgba(124,58,237,0.28), transparent 70%),
+            radial-gradient(ellipse 40% 55% at 22% 100%, rgba(190,24,93,0.22), transparent 70%),
+            radial-gradient(ellipse 40% 60% at 100% 45%, rgba(20,184,166,0.22), transparent 70%),
+            radial-gradient(ellipse 35% 40% at 50% 25%, rgba(59,73,180,0.22), transparent 70%),
+            #0D0E1A;
+          border-color: #1F2033;
+          color: #FFFFFF;
+        }
+        .pn-root--wide .pn-head { border-bottom-color: rgba(255,255,255,0.08); }
+        .pn-root--wide .pn-brand { color: #C68BFF; }
+        .pn-root--wide .pn-step-label { color: #8A879C; }
+        .pn-root--wide .pn-progress-track { background: rgba(255,255,255,0.08); }
 
         /* Широкий режим стартовой страницы (1366–1440px) — увеличиваем
            отступы и вторичные элементы пропорционально контейнеру,
@@ -1104,8 +1143,13 @@ function ProtocolNavigator() {
         .pn-root--wide .pn-head,
         .pn-root--wide .pn-body { padding-left: 64px; padding-right: 64px; }
         .pn-root--wide .pn-hero-caps { font-size: clamp(16px, 1.6cqw, 26px); margin-bottom: 16px; }
-        .pn-root--wide .pn-hero-sub { font-size: clamp(14px, 1.1cqw, 17px); max-width: 480px; margin-bottom: 36px; }
-        .pn-root--wide .pn-hero-cta { font-size: clamp(16px, 1.2cqw, 19px); padding: 18px 52px; }
+        .pn-root--wide .pn-hero-sub { font-size: clamp(14px, 1.1cqw, 17px); max-width: 520px; margin-bottom: 40px; }
+        .pn-root--wide .pn-hero-cta { font-size: clamp(16px, 1.2cqw, 19px); padding: 20px 56px; }
+        @media (max-width: 600px) {
+          .pn-root--wide .pn-head,
+          .pn-root--wide .pn-body { padding-left: 20px; padding-right: 20px; }
+          .pn-root--wide .pn-hero-cta { padding: 17px 40px; }
+        }
 
         .pn-field { margin-bottom: 22px; animation: pnFieldIn 320ms ease both; }
         @keyframes pnFieldIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -1216,18 +1260,14 @@ function ProtocolNavigator() {
         {screen === "intro" && (
           <div className="pn-hero-screen">
             <div className="pn-hero">
-              <div className="pn-hero-row">
-                <span>TRACK NAVIGAT</span>
-                <span className="pn-hero-o"><Icon.Signal className="pn-hero-o-icon" /></span>
-                <span>R</span>
-              </div>
+              <h1 className="pn-hero-title">Track Navigator</h1>
             </div>
             <p className="pn-hero-caps">Подберите решение за 30 секунд</p>
             <p className="pn-hero-sub">
               Ответьте на несколько вопросов о клиенте — получите протокол, точные устройства и готовую фразу для разговора.
             </p>
             <button className="pn-hero-cta" onClick={() => resetForm(SYSTEMS[0].id)}>
-              Поехали!
+              Поехали! <span className="pn-hero-cta-arrow" aria-hidden="true">→</span>
             </button>
           </div>
         )}
