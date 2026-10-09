@@ -4,9 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Протокол-навигатор — тренажёр протоколов управления</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@800;900&display=swap" rel="stylesheet" />
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -1081,61 +1078,75 @@ function ProtocolNavigator() {
           flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
           text-align: center; padding: 28px 0 8px; container-type: inline-size;
         }
-        .pn-hero { width: 100%; display: flex; justify-content: center; margin-bottom: 26px; padding: 0 0.04em; }
-        /* Вордмарк в стиле референса: широкий гротеск Unbounded 900,
-           градиент слева направо белый → сиреневый → фиолетовый → синий → бирюзовый. */
+        .pn-hero { width: 100%; display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
+        /* Вариант в фирменном стиле Maytoni: палитра чёрный / белый / серый /
+           MT Bold Violet, корпоративный Arial Bold капслоком.
+           Градиент только внутри палитры — от белого к фирменному фиолетовому. */
+        .pn-hero-kicker {
+          display: inline-flex; align-items: center; gap: 10px;
+          font-size: 11px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase;
+          color: var(--gray); margin: 0 0 22px;
+        }
+        .pn-hero-kicker::before, .pn-hero-kicker::after {
+          content: ""; width: 28px; height: 1px; background: var(--violet);
+        }
         .pn-hero-title {
-          margin: 0; white-space: nowrap;
-          font-family: "Unbounded", "Arial Black", Arial, Helvetica, sans-serif;
-          font-weight: 900; letter-spacing: -0.025em; line-height: 1.1;
+          margin: 0; white-space: nowrap; text-transform: uppercase;
+          font-family: Arial, Helvetica, sans-serif; font-weight: 900;
+          letter-spacing: -0.035em; line-height: 0.95;
           font-size: 40px;
-          font-size: clamp(20px, 8.6cqw, 120px);
-          color: #C77DFF;
-          background: linear-gradient(90deg, #FFFFFF 0%, #F1E6FF 14%, #C68BFF 30%, #A64BF4 45%, #6E5BF0 60%, #4A8DF0 74%, #22C9EC 87%, #00F5FF 100%);
+          font-size: clamp(22px, 10cqw, 132px);
+          color: var(--white);
+          background: linear-gradient(90deg, #FFFFFF 0%, #FFFFFF 22%, #C9B8FF 48%, #7C54FE 78%, #7C54FE 100%);
           -webkit-background-clip: text; background-clip: text;
           -webkit-text-fill-color: transparent;
-          padding-bottom: 0.06em;
+          padding-bottom: 0.04em;
         }
+        .pn-hero-rule {
+          width: 100%; max-width: 0; height: 3px; background: var(--violet);
+          margin-top: 22px; animation: pnRule 900ms 150ms cubic-bezier(.4,0,.2,1) forwards;
+        }
+        @keyframes pnRule { to { max-width: 120px; } }
         .pn-hero-caps {
-          font-size: 16px; font-weight: 800; letter-spacing: 0.01em; text-transform: uppercase;
-          color: #FFFFFF; margin: 0 0 12px; padding: 0 12px;
+          font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+          color: var(--white); margin: 0 0 12px; padding: 0 12px;
         }
         .pn-hero-sub {
-          font-size: 14px; line-height: 1.6; color: #A9A6B8; margin: 0 0 32px;
+          font-size: 14px; line-height: 1.6; color: #9A9A9A; margin: 0 0 34px;
           max-width: 380px; padding: 0 12px;
         }
-        /* Кнопка-«таблетка» с мягким фиолетовым свечением, как на референсе */
+        /* Кнопка: фирменный фиолетовый, строгие прямые углы как в айдентике,
+           свечение того же фиолетового. */
         .pn-hero-cta {
-          appearance: none; border: none; border-radius: 999px;
-          background: #B13AF0; color: #FFFFFF;
-          font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
-          padding: 17px 46px;
-          display: inline-flex; align-items: center; gap: 10px;
-          box-shadow: 0 0 0 1px rgba(214,140,255,0.35) inset, 0 8px 32px rgba(177,58,240,0.45), 0 0 60px rgba(177,58,240,0.25);
-          transition: transform 140ms ease, background 160ms ease, box-shadow 200ms ease;
+          appearance: none; border: none; border-radius: 2px;
+          background: var(--violet); color: var(--white);
+          font-size: 15px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+          padding: 18px 44px;
+          display: inline-flex; align-items: center; gap: 14px;
+          box-shadow: 0 10px 36px rgba(124,84,254,0.45), 0 0 70px rgba(124,84,254,0.22);
+          transition: transform 140ms ease, background 160ms ease, color 160ms ease, box-shadow 200ms ease;
         }
         .pn-hero-cta-arrow { display: inline-block; transition: transform 200ms ease; }
-        .pn-hero-cta:hover { background: #BF52F7; box-shadow: 0 0 0 1px rgba(230,170,255,0.5) inset, 0 10px 40px rgba(177,58,240,0.6), 0 0 80px rgba(177,58,240,0.35); }
-        .pn-hero-cta:hover .pn-hero-cta-arrow { transform: translateX(4px); }
+        .pn-hero-cta:hover { background: var(--white); color: var(--black); box-shadow: 0 10px 40px rgba(124,84,254,0.6), 0 0 90px rgba(124,84,254,0.3); }
+        .pn-hero-cta:hover .pn-hero-cta-arrow { transform: translateX(5px); color: var(--violet); }
         .pn-hero-cta:active { transform: scale(0.96); }
-        .pn-root .pn-hero-cta:focus-visible { outline: 2px solid #00F5FF; outline-offset: 3px; }
+        .pn-root .pn-hero-cta:focus-visible { outline: 2px solid var(--white); outline-offset: 3px; }
 
-        /* Стартовая страница — тёмный фон с цветными пятнами свечения
-           (без тёмного фона белое начало градиента не видно). */
+        /* Стартовая страница — фирменный чёрный, одно фиолетовое свечение
+           за заголовком и тонкая сетка как намёк на трек и шинопровод. */
         .pn-root.pn-root--wide {
           background:
-            radial-gradient(ellipse 45% 60% at 0% 0%, rgba(124,58,237,0.28), transparent 70%),
-            radial-gradient(ellipse 40% 55% at 22% 100%, rgba(190,24,93,0.22), transparent 70%),
-            radial-gradient(ellipse 40% 60% at 100% 45%, rgba(20,184,166,0.22), transparent 70%),
-            radial-gradient(ellipse 35% 40% at 50% 25%, rgba(59,73,180,0.22), transparent 70%),
-            #0D0E1A;
-          border-color: #1F2033;
-          color: #FFFFFF;
+            radial-gradient(ellipse 50% 45% at 62% 42%, rgba(124,84,254,0.22), transparent 70%),
+            linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px) 0 0 / 100% 80px,
+            #000000;
+          border-color: #1A1A1A;
+          color: var(--white);
         }
-        .pn-root--wide .pn-head { border-bottom-color: rgba(255,255,255,0.08); }
-        .pn-root--wide .pn-brand { color: #C68BFF; }
-        .pn-root--wide .pn-step-label { color: #8A879C; }
-        .pn-root--wide .pn-progress-track { background: rgba(255,255,255,0.08); }
+        .pn-root--wide .pn-head { border-bottom-color: rgba(255,255,255,0.1); }
+        .pn-root--wide .pn-brand { color: var(--violet); }
+        .pn-root--wide .pn-step-label { color: var(--gray); }
+        .pn-root--wide .pn-progress-track { background: rgba(255,255,255,0.1); }
+        @media (prefers-reduced-motion: reduce) { .pn-hero-rule { animation: none; max-width: 120px; } }
 
         /* Широкий режим стартовой страницы (1366–1440px) — увеличиваем
            отступы и вторичные элементы пропорционально контейнеру,
@@ -1144,11 +1155,13 @@ function ProtocolNavigator() {
         .pn-root--wide .pn-body { padding-left: 64px; padding-right: 64px; }
         .pn-root--wide .pn-hero-caps { font-size: clamp(16px, 1.6cqw, 26px); margin-bottom: 16px; }
         .pn-root--wide .pn-hero-sub { font-size: clamp(14px, 1.1cqw, 17px); max-width: 520px; margin-bottom: 40px; }
-        .pn-root--wide .pn-hero-cta { font-size: clamp(16px, 1.2cqw, 19px); padding: 20px 56px; }
+        .pn-root--wide .pn-hero-cta { font-size: clamp(15px, 1.1cqw, 17px); padding: 20px 56px; }
         @media (max-width: 600px) {
           .pn-root--wide .pn-head,
           .pn-root--wide .pn-body { padding-left: 20px; padding-right: 20px; }
           .pn-root--wide .pn-hero-cta { padding: 17px 40px; }
+          .pn-hero-kicker { letter-spacing: 0.16em; font-size: 10px; }
+          .pn-hero-kicker::before, .pn-hero-kicker::after { display: none; }
         }
 
         .pn-field { margin-bottom: 22px; animation: pnFieldIn 320ms ease both; }
@@ -1260,7 +1273,9 @@ function ProtocolNavigator() {
         {screen === "intro" && (
           <div className="pn-hero-screen">
             <div className="pn-hero">
+              <p className="pn-hero-kicker">Maytoni · Управление трековыми системами</p>
               <h1 className="pn-hero-title">Track Navigator</h1>
+              <div className="pn-hero-rule" aria-hidden="true" />
             </div>
             <p className="pn-hero-caps">Подберите решение за 30 секунд</p>
             <p className="pn-hero-sub">
